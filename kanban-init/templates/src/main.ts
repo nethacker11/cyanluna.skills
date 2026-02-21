@@ -17,6 +17,7 @@ interface Task {
   plan_review_count: number;
   impl_review_count: number;
   level: number;
+  attachments: string | null;
   created_at: string;
   started_at: string | null;
   planned_at: string | null;
@@ -348,6 +349,23 @@ function renderTestEntries(results: any[]): string {
   `).join('');
 }
 
+async function uploadFiles(taskId: number, files: FileList) {
+  for (const file of Array.from(files)) {
+    if (!file.type.startsWith("image/")) continue;
+    const reader = new FileReader();
+    const data: string = await new Promise((resolve) => {
+      reader.onload = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
+    });
+    await fetch(`/api/task/${taskId}/attachment`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filename: file.name, data }),
+    });
+  }
+  showTaskDetail(taskId);
+}
+
 async function showTaskDetail(id: number) {
   const overlay = document.getElementById("modal-overlay")!;
   const content = document.getElementById("modal-content")!;
@@ -408,20 +426,44 @@ async function showTaskDetail(id: number) {
       </div>
     `;
 
-    // Requirements section (editable)
+    // Attachments
+    const attachments = parseJsonArray(task.attachments);
+    const attachmentsHtml = attachments.length > 0
+      ? `<div class="attachments-grid">${attachments.map((a: any) =>
+          `<div class="attachment-thumb" data-stored="${a.storedName}">
+            <img src="${a.url}" alt="${a.filename}" loading="lazy" />
+            <button class="attachment-remove" data-id="${id}" data-name="${a.storedName}" title="Remove">&times;</button>
+            <span class="attachment-name">${a.filename}</span>
+          </div>`
+        ).join('')}</div>`
+      : '';
+
+    // Requirements section (editable + level + attachments)
     const reqBody = task.description
       ? simpleMarkdownToHtml(task.description)
       : `<span class="phase-empty">Not yet documented</span>`;
+    const levelOptions = [1, 2, 3].map(l =>
+      `<option value="${l}" ${l === task.level ? 'selected' : ''}>L${l}</option>`
+    ).join('');
     const requirementSection = `
       <div class="lifecycle-phase phase-requirement ${currentPhase === 0 ? 'active' : ''}">
         <div class="phase-header">
           <span class="phase-icon">\u{1F4CB}</span>
           <span class="phase-label">Requirements</span>
+          <select class="level-select" id="level-select" title="Pipeline Level">${levelOptions}</select>
           <button class="phase-edit-btn" id="req-edit-btn" title="Edit">&#9998;</button>
         </div>
-        <div class="phase-body" id="req-body-view">${reqBody}</div>
+        <div class="phase-body" id="req-body-view">
+          ${reqBody}
+          ${attachmentsHtml}
+        </div>
         <div class="phase-body hidden" id="req-body-edit">
           <textarea id="req-textarea" rows="8">${(task.description || '').replace(/</g, '&lt;')}</textarea>
+          <div class="attachment-drop-zone" id="attachment-drop-zone">
+            <span>\u{1F4CE} Drop images here or click to attach</span>
+            <input type="file" id="attachment-input" accept="image/*" multiple hidden />
+          </div>
+          ${attachmentsHtml ? `<div id="edit-attachments">${attachmentsHtml}</div>` : ''}
           <div class="phase-edit-actions">
             <button class="phase-save-btn" id="req-save-btn">Save</button>
             <button class="phase-cancel-btn" id="req-cancel-btn">Cancel</button>
@@ -531,6 +573,18 @@ async function showTaskDetail(id: number) {
       </div>
     `;
 
+    // Level change handler
+    const levelSelect = document.getElementById("level-select") as HTMLSelectElement;
+    levelSelect.addEventListener("change", async () => {
+      const newLevel = parseInt(levelSelect.value);
+      await fetch(`/api/task/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ level: newLevel }),
+      });
+      showTaskDetail(id);
+    });
+
     // Requirements edit handlers
     const reqEditBtn = document.getElementById("req-edit-btn")!;
     const reqView = document.getElementById("req-body-view")!;
@@ -560,6 +614,44 @@ async function showTaskDetail(id: number) {
         body: JSON.stringify({ description: newDesc }),
       });
       showTaskDetail(id);
+    });
+
+    // Image attachment handlers
+    const dropZone = document.getElementById("attachment-drop-zone");
+    const fileInput = document.getElementById("attachment-input") as HTMLInputElement | null;
+
+    if (dropZone && fileInput) {
+      dropZone.addEventListener("click", () => fileInput.click());
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("drop-active");
+      });
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("drop-active");
+      });
+      dropZone.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("drop-active");
+        const files = (e as DragEvent).dataTransfer?.files;
+        if (files) await uploadFiles(id, files);
+      });
+      fileInput.addEventListener("change", async () => {
+        if (fileInput.files) await uploadFiles(id, fileInput.files);
+      });
+    }
+
+    // Attachment remove buttons
+    content.querySelectorAll(".attachment-remove").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const el = btn as HTMLElement;
+        const taskId = el.dataset.id;
+        const storedName = el.dataset.name;
+        await fetch(`/api/task/${taskId}/attachment/${encodeURIComponent(storedName!)}`, {
+          method: "DELETE",
+        });
+        showTaskDetail(id);
+      });
     });
   } catch {
     content.innerHTML = '<div style="color:#ef4444">Failed to load</div>';

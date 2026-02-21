@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { Plugin, ViteDevServer } from "vite";
@@ -111,6 +112,15 @@ function getDb(): Database.Database {
   try {
     db.exec(`ALTER TABLE tasks ADD COLUMN level INTEGER NOT NULL DEFAULT 3`);
   } catch { /* column already exists */ }
+  try {
+    db.exec(`ALTER TABLE tasks ADD COLUMN attachments TEXT`);
+  } catch { /* column already exists */ }
+
+  // Ensure images directory exists
+  const imagesDir = path.resolve(path.dirname(DB_PATH), "kanban-images");
+  if (!fs.existsSync(imagesDir)) {
+    fs.mkdirSync(imagesDir, { recursive: true });
+  }
 
   // Backfill rank for existing rows (rank=0) with 1000-unit spacing per project+status group
   db.exec(`
@@ -164,6 +174,7 @@ interface Task {
   plan_review_count: number;
   impl_review_count: number;
   level: number;
+  attachments: string | null;
   created_at: string;
   started_at: string | null;
   planned_at: string | null;
@@ -747,6 +758,149 @@ export function kanbanApiPlugin(): Plugin {
           } finally {
             db.close();
           }
+          return;
+        }
+
+        // POST /api/task/:id/attachment  (upload image as base64)
+        if (
+          req.url?.match(/^\/api\/task\/\d+\/attachment$/) &&
+          req.method === "POST"
+        ) {
+          const id = req.url.split("/")[3];
+          // Increase body size limit for images
+          const chunks: Buffer[] = [];
+          req.on("data", (chunk: Buffer) => chunks.push(chunk));
+          await new Promise<void>((resolve) => req.on("end", resolve));
+          let body: any;
+          try {
+            body = JSON.parse(Buffer.concat(chunks).toString());
+          } catch {
+            res.statusCode = 400;
+            res.end(JSON.stringify({ error: "Invalid JSON" }));
+            return;
+          }
+
+          const db = getDb();
+          try {
+            const task = db
+              .prepare("SELECT attachments FROM tasks WHERE id = ?")
+              .get(id) as { attachments: string | null } | undefined;
+
+            if (!task) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: "Not found" }));
+              return;
+            }
+
+            const filename = (body.filename || "image.png").replace(/[^a-zA-Z0-9._-]/g, "_");
+            const ext = path.extname(filename) || ".png";
+            const safeName = `${id}_${Date.now()}${ext}`;
+            const imagesDir = path.resolve(path.dirname(DB_PATH), "kanban-images");
+            const filePath = path.resolve(imagesDir, safeName);
+
+            // Decode base64 and save
+            const base64Data = body.data.replace(/^data:[^;]+;base64,/, "");
+            fs.writeFileSync(filePath, Buffer.from(base64Data, "base64"));
+
+            // Update attachments array
+            const attachments = task.attachments
+              ? JSON.parse(task.attachments)
+              : [];
+            attachments.push({
+              filename: body.filename || "image.png",
+              storedName: safeName,
+              path: filePath,
+              url: `/api/uploads/${safeName}`,
+              size: fs.statSync(filePath).size,
+              uploaded_at: new Date().toISOString(),
+            });
+
+            db.prepare("UPDATE tasks SET attachments = ? WHERE id = ?")
+              .run(JSON.stringify(attachments), id);
+
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({
+              success: true,
+              attachment: attachments[attachments.length - 1],
+            }));
+          } finally {
+            db.close();
+          }
+          return;
+        }
+
+        // DELETE /api/task/:id/attachment/:filename  (remove attachment)
+        if (
+          req.url?.match(/^\/api\/task\/\d+\/attachment\/[^/]+$/) &&
+          req.method === "DELETE"
+        ) {
+          const parts = req.url.split("/");
+          const id = parts[3];
+          const storedName = decodeURIComponent(parts[5]);
+          const db = getDb();
+          try {
+            const task = db
+              .prepare("SELECT attachments FROM tasks WHERE id = ?")
+              .get(id) as { attachments: string | null } | undefined;
+
+            if (!task) {
+              res.statusCode = 404;
+              res.end(JSON.stringify({ error: "Not found" }));
+              return;
+            }
+
+            const attachments = task.attachments
+              ? JSON.parse(task.attachments)
+              : [];
+            const idx = attachments.findIndex((a: any) => a.storedName === storedName);
+            if (idx >= 0) {
+              const removed = attachments.splice(idx, 1)[0];
+              // Delete file
+              try { fs.unlinkSync(removed.path); } catch { /* ok */ }
+              db.prepare("UPDATE tasks SET attachments = ? WHERE id = ?")
+                .run(JSON.stringify(attachments), id);
+            }
+
+            res.setHeader("Content-Type", "application/json");
+            res.end(JSON.stringify({ success: true }));
+          } finally {
+            db.close();
+          }
+          return;
+        }
+
+        // GET /api/uploads/:filename  (serve uploaded images)
+        if (req.url?.match(/^\/api\/uploads\/[^/]+$/) && req.method === "GET") {
+          const filename = decodeURIComponent(req.url.split("/").pop()!);
+          const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const imagesDir = path.resolve(path.dirname(DB_PATH), "kanban-images");
+          const filePath = path.resolve(imagesDir, safeName);
+
+          // Prevent path traversal
+          if (!filePath.startsWith(imagesDir)) {
+            res.statusCode = 403;
+            res.end(JSON.stringify({ error: "Forbidden" }));
+            return;
+          }
+
+          if (!fs.existsSync(filePath)) {
+            res.statusCode = 404;
+            res.end(JSON.stringify({ error: "Not found" }));
+            return;
+          }
+
+          const ext = path.extname(safeName).toLowerCase();
+          const mimeTypes: Record<string, string> = {
+            ".png": "image/png",
+            ".jpg": "image/jpeg",
+            ".jpeg": "image/jpeg",
+            ".gif": "image/gif",
+            ".webp": "image/webp",
+            ".svg": "image/svg+xml",
+          };
+          res.setHeader("Content-Type", mimeTypes[ext] || "application/octet-stream");
+          res.setHeader("Cache-Control", "public, max-age=86400");
+          res.end(fs.readFileSync(filePath));
           return;
         }
 
