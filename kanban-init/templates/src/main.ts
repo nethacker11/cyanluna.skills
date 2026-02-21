@@ -608,13 +608,37 @@ async function showTaskDetail(id: number) {
     const agentLogs = parseJsonArray(task.agent_log);
     let agentLogSection = '';
     if (agentLogs.length > 0) {
-      const logEntries = agentLogs.map((entry: any) => `
-        <div class="agent-log-entry">
-          <span class="agent-log-time">${entry.timestamp?.slice(0, 16) || ''}</span>
-          <span class="badge agent-tag">${entry.agent || ''}</span>
-          <span class="agent-log-msg">${entry.message || ''}</span>
-        </div>
-      `).join('');
+      const MODEL_NAMES = ['opus', 'sonnet', 'haiku', 'gemini', 'copilot', 'gpt'];
+      function splitAgentModel(agent: string): { name: string; model: string | null } {
+        if (!agent) return { name: '', model: null };
+        // Check explicit model field first, then parse from agent string
+        const lower = agent.toLowerCase();
+        for (const m of MODEL_NAMES) {
+          const idx = lower.lastIndexOf(m);
+          if (idx > 0) {
+            // Split at the separator before model name (e.g. "plan-agent-opus" → "plan-agent" + "opus")
+            let sep = idx;
+            while (sep > 0 && (agent[sep - 1] === '-' || agent[sep - 1] === '_')) sep--;
+            return { name: agent.slice(0, sep), model: agent.slice(idx) };
+          }
+        }
+        return { name: agent, model: null };
+      }
+      const logEntries = agentLogs.map((entry: any) => {
+        const { name, model } = splitAgentModel(entry.agent || '');
+        const modelFromField = entry.model || model;
+        const modelBadge = modelFromField
+          ? `<span class="badge model-tag model-${modelFromField.toLowerCase()}">${modelFromField}</span>`
+          : '';
+        return `
+          <div class="agent-log-entry">
+            <span class="agent-log-time">${entry.timestamp?.slice(0, 16) || ''}</span>
+            <span class="badge agent-tag">${name || entry.agent || ''}</span>
+            ${modelBadge}
+            <span class="agent-log-msg">${entry.message || ''}</span>
+          </div>
+        `;
+      }).join('');
       agentLogSection = `
         <details class="lifecycle-phase phase-agent-log">
           <summary class="phase-header">

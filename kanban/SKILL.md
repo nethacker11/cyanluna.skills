@@ -84,9 +84,9 @@ Req → Plan → Review Plan → Impl → Review Impl → Test → Done
 |--------|--------|-------|-------|-----------|
 | Req | `todo` | User | - | `description` |
 | Plan | `plan` | Plan Agent | opus (Task) | `plan` |
-| Review Plan | `plan_review` | Review Agent | gemini/copilot(opus)/sonnet | `plan_review_comments` |
+| Review Plan | `plan_review` | Review Agent | gemini-3-pro-preview / copilot(opus) / sonnet | `plan_review_comments` |
 | Impl | `impl` | Worker → TDD Tester (sequential) | opus → sonnet | `implementation_notes` |
-| Review Impl | `impl_review` | Code Review Agent | gemini/copilot(opus)/sonnet | `review_comments` |
+| Review Impl | `impl_review` | Code Review Agent | gemini-3-pro-preview / copilot(opus) / sonnet | `review_comments` |
 | Test | `test` | Test Runner | sonnet (Task) | `test_results` |
 | Done | `done` | - | - | - |
 
@@ -146,19 +146,52 @@ Phase 7: Done                                          - Completed
 ```
 
 #### agent_log Format
+
+**IMPORTANT**: Always include `model` field to track which AI model performed each step.
+
 ```json
 [
   {
     "agent": "plan-agent",
+    "model": "opus",
     "message": "Started planning for task #5",
     "timestamp": "2026-02-20T14:00:00.000Z"
+  },
+  {
+    "agent": "review-agent",
+    "model": "gemini",
+    "message": "Plan review completed: approved",
+    "timestamp": "2026-02-20T14:05:00.000Z"
   }
 ]
 ```
 
-## DB Access — HTTP API Only
+Standard agent + model combinations:
+| Agent | Model |
+|-------|-------|
+| `plan-agent` | `opus` |
+| `worker-agent` | `opus` |
+| `tdd-tester` | `sonnet` |
+| `review-agent` | `gemini-3-pro-preview` / `copilot-opus` / `sonnet` (whichever was used) |
+| `code-review-agent` | `gemini-3-pro-preview` / `copilot-opus` / `sonnet` |
+| `test-runner` | `sonnet` |
 
-**IMPORTANT**: All DB access MUST use the HTTP API endpoints served by the kanban-board dev server. Do NOT use `sqlite3` CLI directly.
+## DB Access
+
+### Priority: HTTP API → sqlite3 CLI
+
+1. **HTTP API** (preferred when kanban-board dev server is running): `http://localhost:5173`
+2. **sqlite3 CLI** (when dev server is not running, or for direct queries/bulk ops): `sqlite3 .claude/kanban.db`
+
+**IMPORTANT**: Do NOT use Python (`python3 -c "import sqlite3..."`) for DB access. Always use the `sqlite3` CLI command which is installed at `/usr/bin/sqlite3`.
+
+```bash
+# Quick read example
+sqlite3 -json .claude/kanban.db "SELECT id, title, status, priority FROM tasks WHERE project='$(basename $(pwd))' ORDER BY id"
+
+# Quick update example
+sqlite3 .claude/kanban.db "UPDATE tasks SET status='impl', started_at=datetime('now') WHERE id=$ID"
+```
 
 Base URL: `http://localhost:5173` (default kanban-board port)
 
@@ -400,10 +433,10 @@ else
 fi
 ```
 
-For gemini CLI, use heredoc with quoted delimiter for shell injection prevention:
+For gemini CLI (always use `--model gemini-3-pro-preview`):
 ```bash
 TASK_JSON=$(curl -s http://localhost:5173/api/task/$ID)
-REVIEW_RESULT=$(echo "$TASK_JSON" | jq -r '{title, description, plan}' | gemini --sandbox <<'REVIEW_EOF'
+REVIEW_RESULT=$(echo "$TASK_JSON" | jq -r '{title, description, plan}' | gemini --sandbox --model gemini-3-pro-preview <<'REVIEW_EOF'
 Review this implementation plan. Evaluate:
 1. Is the plan complete and addresses all requirements?
 2. Are there missing edge cases?
@@ -415,11 +448,11 @@ REVIEW_EOF
 )
 ```
 
-For copilot CLI fallback (uses `-p` with string argument, NOT heredoc):
+For copilot CLI fallback (always use `--model claude-opus-4.6`):
 ```bash
 TASK_JSON=$(curl -s http://localhost:5173/api/task/$ID)
 REVIEW_INPUT=$(echo "$TASK_JSON" | jq -r '{title, description, plan}')
-REVIEW_RESULT=$(copilot -p "Review this implementation plan: $REVIEW_INPUT. Evaluate: 1) Is the plan complete and addresses all requirements? 2) Are there missing edge cases? 3) Is the approach sound? Respond ONLY with a JSON object: {\"status\": \"approved\" or \"changes_requested\", \"comment\": \"your review in markdown\"}" --model claude-sonnet-4.6 2>&1)
+REVIEW_RESULT=$(copilot -p "Review this implementation plan: $REVIEW_INPUT. Evaluate: 1) Is the plan complete and addresses all requirements? 2) Are there missing edge cases? 3) Is the approach sound? Respond ONLY with a JSON object: {\"status\": \"approved\" or \"changes_requested\", \"comment\": \"your review in markdown\"}" --model claude-opus-4.6 2>&1)
 ```
 
 For sonnet fallback (Task tool):
@@ -508,10 +541,10 @@ curl -s -X PATCH http://localhost:5173/api/task/$ID \
 
 Same reviewer detection as plan_review (gemini → copilot → sonnet).
 
-For gemini CLI:
+For gemini CLI (always use `--model gemini-3-pro-preview`):
 ```bash
 TASK_JSON=$(curl -s http://localhost:5173/api/task/$ID)
-REVIEW_RESULT=$(echo "$TASK_JSON" | jq -r '{title, description, plan, implementation_notes}' | gemini --sandbox <<'REVIEW_EOF'
+REVIEW_RESULT=$(echo "$TASK_JSON" | jq -r '{title, description, plan, implementation_notes}' | gemini --sandbox --model gemini-3-pro-preview <<'REVIEW_EOF'
 Review this code implementation. Evaluate:
 1. Code quality: readability, duplication, naming
 2. Error handling: proper try-catch, error messages
@@ -525,11 +558,11 @@ REVIEW_EOF
 )
 ```
 
-For copilot CLI:
+For copilot CLI (always use `--model claude-opus-4.6`):
 ```bash
 TASK_JSON=$(curl -s http://localhost:5173/api/task/$ID)
 REVIEW_INPUT=$(echo "$TASK_JSON" | jq -r '{title, description, plan, implementation_notes}')
-REVIEW_RESULT=$(copilot -p "Review this code implementation: $REVIEW_INPUT. Evaluate: 1) Code quality: readability, duplication, naming 2) Error handling: proper try-catch, error messages 3) Type safety: TypeScript types, minimize any usage 4) Security: SQL injection, XSS, input validation 5) Performance: unnecessary queries, memory usage. Respond ONLY with a JSON object: {\"status\": \"approved\" or \"changes_requested\", \"comment\": \"your review in markdown\"}" --model claude-sonnet-4.6 2>&1)
+REVIEW_RESULT=$(copilot -p "Review this code implementation: $REVIEW_INPUT. Evaluate: 1) Code quality: readability, duplication, naming 2) Error handling: proper try-catch, error messages 3) Type safety: TypeScript types, minimize any usage 4) Security: SQL injection, XSS, input validation 5) Performance: unnecessary queries, memory usage. Respond ONLY with a JSON object: {\"status\": \"approved\" or \"changes_requested\", \"comment\": \"your review in markdown\"}" --model claude-opus-4.6 2>&1)
 ```
 
 Record result:
@@ -589,7 +622,7 @@ else
 fi
 
 if command -v copilot &>/dev/null; then
-  echo "| Review Agent | copilot (claude-sonnet-4.6) | ✅ (fallback #1) |"
+  echo "| Review Agent | copilot (claude-opus-4.6) | ✅ (fallback #1) |"
 else
   echo "| Review Agent | copilot | ❌ |"
 fi
@@ -615,7 +648,10 @@ Ask the user which fields to modify, then update via API.
 `/kanban remove <ID>`
 
 ```bash
-# Note: delete is not available via API, use sqlite3 as fallback
+# Via API (if dev server running)
+curl -s -X DELETE http://localhost:5173/api/task/$ID
+
+# Via sqlite3 CLI (if dev server not running)
 sqlite3 .claude/kanban.db "DELETE FROM tasks WHERE id=$ID;"
 ```
 
@@ -643,7 +679,7 @@ echo "$BOARD" | jq '{
 - 2nd failure: keep current status, log error to `agent_log`, notify user
 
 ### External CLI Failure
-- `which gemini` not found → try `copilot -p --model claude-sonnet-4.6` → fallback to `sonnet` (Task tool)
+- `which gemini` not found → try `copilot -p --model claude-opus-4.6` → fallback to `sonnet` (Task tool)
 - CLI execution error (including rate limit) → log to `agent_log`, try next fallback
 - gemini rate limit → copilot fallback → sonnet fallback
 
@@ -691,7 +727,7 @@ All agents   → append to: agent_log
 
 ## Initial Setup
 
-Auto-creates DB if missing (via HTTP API or sqlite3 fallback):
+Auto-creates DB if missing. Use `sqlite3` CLI (NOT python):
 ```bash
 mkdir -p .claude
 sqlite3 .claude/kanban.db "
@@ -713,6 +749,9 @@ sqlite3 .claude/kanban.db "
     plan_review_count INTEGER NOT NULL DEFAULT 0,
     impl_review_count INTEGER NOT NULL DEFAULT 0,
     level INTEGER NOT NULL DEFAULT 3,
+    attachments TEXT,
+    notes TEXT,
+    rank INTEGER NOT NULL DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now')),
     started_at TEXT,
     planned_at TEXT,
@@ -802,9 +841,9 @@ curl -s -X POST http://localhost:5173/api/task/$ID/test-result \
 |-------|-------|---------|------------|
 | Requirements | `description` | What needs to be done | User |
 | Plan | `plan` | How to approach it | Plan Agent (opus) |
-| Plan Review | `plan_review_comments` | Plan verification | Review Agent (gemini/copilot/sonnet) |
+| Plan Review | `plan_review_comments` | Plan verification | Review Agent (gemini-3-pro-preview / copilot-opus / sonnet) |
 | Implementation | `implementation_notes` | What was changed + tests | Worker (opus) + TDD Tester (sonnet) |
-| Impl Review | `review_comments` | Code review results | Code Review Agent (gemini/copilot/sonnet) |
+| Impl Review | `review_comments` | Code review results | Code Review Agent (gemini-3-pro-preview / copilot-opus / sonnet) |
 | Test | `test_results` | Lint/build/test results | Test Runner (sonnet) |
 
 ## Web Board Viewer

@@ -885,6 +885,42 @@ main#board.hidden {
 }
 .agent-log-msg {
   color: #cbd5e1;
+  flex: 1;
+}
+
+/* Model tag badges in agent log */
+.badge.model-tag {
+  font-size: 0.58rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.badge.model-opus {
+  background: #7c3aed20;
+  color: #a78bfa;
+  border: 1px solid #7c3aed40;
+}
+.badge.model-sonnet {
+  background: #3b82f620;
+  color: #60a5fa;
+  border: 1px solid #3b82f640;
+}
+.badge.model-haiku {
+  background: #10b98120;
+  color: #34d399;
+  border: 1px solid #10b98140;
+}
+.badge.model-gemini {
+  background: #f59e0b20;
+  color: #fbbf24;
+  border: 1px solid #f59e0b40;
+}
+.badge.model-copilot {
+  background: #64748b20;
+  color: #94a3b8;
+  border: 1px solid #64748b40;
 }
 
 /* Level selector in modal */
