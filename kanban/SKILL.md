@@ -94,9 +94,9 @@ Req → Plan → Review Plan → Impl → Review Impl → Test → Done
 |--------|--------|-------|-------|-----------|
 | Req | `todo` | User | - | `description` |
 | Plan | `plan` | Plan Agent | opus (Task) | `plan` |
-| Review Plan | `plan_review` | Review Agent | gemini-3-pro-preview / copilot(opus) / sonnet | `plan_review_comments` |
+| Review Plan | `plan_review` | Review Agent | sonnet (Task) | `plan_review_comments` |
 | Impl | `impl` | Worker → TDD Tester (sequential) | opus → sonnet | `implementation_notes` |
-| Review Impl | `impl_review` | Code Review Agent | gemini-3-pro-preview / copilot(opus) / sonnet | `review_comments` |
+| Review Impl | `impl_review` | Code Review Agent | sonnet (Task) | `review_comments` |
 | Test | `test` | Test Runner | sonnet (Task) | `test_results` |
 | Done | `done` | - | - | - |
 
@@ -132,7 +132,7 @@ Phase 7: Done                                          - Completed
 ```json
 [
   {
-    "reviewer": "gemini",
+    "reviewer": "sonnet",
     "status": "changes_requested",
     "comment": "## Review Findings\n\n1. Missing error handling\n2. Type safety issues",
     "timestamp": "2026-02-20T14:30:00.000Z"
@@ -169,7 +169,7 @@ Phase 7: Done                                          - Completed
   },
   {
     "agent": "review-agent",
-    "model": "gemini",
+    "model": "sonnet",
     "message": "Plan review completed: approved",
     "timestamp": "2026-02-20T14:05:00.000Z"
   }
@@ -182,8 +182,8 @@ Standard agent + model combinations:
 | `plan-agent` | `opus` |
 | `worker-agent` | `opus` |
 | `tdd-tester` | `sonnet` |
-| `review-agent` | `gemini-3-pro-preview` / `copilot-opus` / `sonnet` (whichever was used) |
-| `code-review-agent` | `gemini-3-pro-preview` / `copilot-opus` / `sonnet` |
+| `review-agent` | `sonnet` |
+| `code-review-agent` | `sonnet` |
 | `test-runner` | `sonnet` |
 
 ## DB Access
@@ -227,12 +227,12 @@ curl -s -X POST http://localhost:5173/api/task \
 # Plan review result — project param required
 curl -s -X POST "http://localhost:5173/api/task/$ID/plan-review?project=$PROJECT" \
   -H 'Content-Type: application/json' \
-  -d '{"reviewer": "gemini", "status": "approved", "comment": "Plan looks good"}'
+  -d '{"reviewer": "sonnet", "status": "approved", "comment": "Plan looks good"}'
 
 # Impl review result — project param required
 curl -s -X POST "http://localhost:5173/api/task/$ID/review?project=$PROJECT" \
   -H 'Content-Type: application/json' \
-  -d '{"reviewer": "gemini", "status": "approved", "comment": "Code looks good"}'
+  -d '{"reviewer": "sonnet", "status": "approved", "comment": "Code looks good"}'
 
 # Test result — project param required
 curl -s -X POST "http://localhost:5173/api/task/$ID/test-result?project=$PROJECT" \
@@ -301,7 +301,7 @@ Output format:
 
 🔍 Plan Review
 - [#5] New Feature (medium)
-  Plan Review: approved by gemini
+  Plan Review: approved by sonnet
 
 📝 Impl Review
 - [#7] API Error Handling (medium)
@@ -432,78 +432,34 @@ curl -s -X PATCH "http://localhost:5173/api/task/<ID>?project=<PROJECT>" \
   -d '{"agent_log": "<UPDATED_LOG_JSON>"}'
 ```
 
-**`plan_review` → Review Agent (external CLI or sonnet)**:
+**`plan_review` → Review Agent (sonnet)**:
 
-Detect available review CLI (priority: gemini → copilot → sonnet):
-```bash
-if command -v gemini &>/dev/null; then
-  REVIEWER="gemini"
-elif command -v copilot &>/dev/null; then
-  REVIEWER="copilot"
-else
-  REVIEWER="sonnet"
-fi
-```
-
-For gemini CLI (always use `--model gemini-3-pro-preview`):
-```bash
-curl -s http://localhost:5173/api/task/$ID | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-with open('/tmp/kanban_plan_review.md', 'w') as f:
-    f.write('# ' + d.get('title','') + '\n\n')
-    f.write('## Description\n' + d.get('description','') + '\n\n')
-    f.write('## Plan\n' + d.get('plan','') + '\n\n')
-    f.write('## Review Instructions\n')
-    f.write('Review this implementation plan. Evaluate:\n')
-    f.write('1. Is the plan complete and addresses all requirements?\n')
-    f.write('2. Are there missing edge cases?\n')
-    f.write('3. Is the approach sound?\n\n')
-    f.write('Respond with a JSON object:\n')
-    f.write('{\"status\": \"approved\" or \"changes_requested\", \"comment\": \"your review in markdown\"}\n')
-"
-REVIEW_RESULT=$(gemini --sandbox --model gemini-3-pro-preview < /tmp/kanban_plan_review.md)
-rm -f /tmp/kanban_plan_review.md
-```
-
-For copilot CLI fallback (always use `--model claude-opus-4.6`):
-```bash
-curl -s http://localhost:5173/api/task/$ID | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-with open('/tmp/kanban_plan_review.md', 'w') as f:
-    f.write('# ' + d.get('title','') + '\n\n')
-    f.write('## Description\n' + d.get('description','') + '\n\n')
-    f.write('## Plan\n' + d.get('plan','') + '\n\n')
-"
-REVIEW_INPUT=$(cat /tmp/kanban_plan_review.md)
-rm -f /tmp/kanban_plan_review.md
-REVIEW_RESULT=$(copilot -p "Review this implementation plan:\n$REVIEW_INPUT\nEvaluate: 1) Is the plan complete and addresses all requirements? 2) Are there missing edge cases? 3) Is the approach sound? Respond ONLY with a JSON object: {\"status\": \"approved\" or \"changes_requested\", \"comment\": \"your review in markdown\"}" --model claude-opus-4.6 2>&1)
-```
-
-For sonnet fallback (Task tool):
 ```
 Use Task tool: model="sonnet", subagent_type="general-purpose"
 ```
 
-Record result and agent_log:
-```bash
-# 1. Record review result
-curl -s -X POST "http://localhost:5173/api/task/$ID/plan-review?project=$PROJECT" \
-  -H 'Content-Type: application/json' \
-  -d "{\"reviewer\": \"$REVIEWER\", \"status\": \"$REVIEW_STATUS\", \"comment\": \"$REVIEW_COMMENT\"}"
+Review Agent prompt:
+```
+You are a Review Agent for Kanban task #<ID>.
 
-# 2. Append to agent_log (orchestrator must do this for review steps)
-CURRENT_LOG=$(curl -s "http://localhost:5173/api/task/$ID?project=$PROJECT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('agent_log') or '[]')")
-NEW_LOG=$(python3 -c "
-import json, datetime
-log = json.loads('''$CURRENT_LOG''')
-log.append({'agent': 'review-agent', 'model': '$REVIEWER', 'message': 'Plan review completed: $REVIEW_STATUS', 'timestamp': datetime.datetime.utcnow().isoformat() + 'Z'})
-print(json.dumps(log))
-")
-curl -s -X PATCH "http://localhost:5173/api/task/$ID?project=$PROJECT" \
+## Task Info
+- Title: <title>
+- Requirements: <description>
+- Plan: <plan>
+
+## Your Job
+Review this implementation plan. Evaluate:
+1. Is the plan complete and addresses all requirements?
+2. Are there missing edge cases?
+3. Is the approach sound?
+
+## Record Results
+# 1. Record review result
+curl -s -X POST "http://localhost:5173/api/task/<ID>/plan-review?project=<PROJECT>" \
   -H 'Content-Type: application/json' \
-  -d "{\"agent_log\": $(echo "$NEW_LOG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")}"
+  -d '{"reviewer": "sonnet", "status": "approved" or "changes_requested", "comment": "<REVIEW_MARKDOWN>"}'
+
+# 2. Append to agent_log (read current log, add entry, PATCH)
 ```
 
 Default mode: After review, ask user with AskUserQuestion whether to accept/reject.
@@ -577,68 +533,37 @@ curl -s -X PATCH "http://localhost:5173/api/task/$ID?project=$PROJECT" \
   -d '{"status": "impl_review", "current_agent": null}'
 ```
 
-**`impl_review` → Code Review Agent**:
+**`impl_review` → Code Review Agent (sonnet)**:
 
-Same reviewer detection as plan_review (gemini → copilot → sonnet).
-
-For gemini CLI (always use `--model gemini-3-pro-preview`):
-```bash
-curl -s http://localhost:5173/api/task/$ID | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-with open('/tmp/kanban_impl_review.md', 'w') as f:
-    f.write('# ' + d.get('title','') + '\n\n')
-    f.write('## Description\n' + d.get('description','') + '\n\n')
-    f.write('## Plan\n' + d.get('plan','') + '\n\n')
-    f.write('## Implementation Notes\n' + d.get('implementation_notes','') + '\n\n')
-    f.write('## Review Instructions\n')
-    f.write('Review this code implementation. Evaluate:\n')
-    f.write('1. Code quality: readability, duplication, naming\n')
-    f.write('2. Error handling: proper try-catch, error messages\n')
-    f.write('3. Type safety: TypeScript types, minimize any usage\n')
-    f.write('4. Security: SQL injection, XSS, input validation\n')
-    f.write('5. Performance: unnecessary queries, memory usage\n\n')
-    f.write('Respond with a JSON object:\n')
-    f.write('{\"status\": \"approved\" or \"changes_requested\", \"comment\": \"your review in markdown\"}\n')
-"
-REVIEW_RESULT=$(gemini --sandbox --model gemini-3-pro-preview < /tmp/kanban_impl_review.md)
-rm -f /tmp/kanban_impl_review.md
+```
+Use Task tool: model="sonnet", subagent_type="general-purpose"
 ```
 
-For copilot CLI (always use `--model claude-opus-4.6`):
-```bash
-curl -s http://localhost:5173/api/task/$ID | python3 -c "
-import sys, json
-d = json.load(sys.stdin)
-with open('/tmp/kanban_impl_review.md', 'w') as f:
-    f.write('# ' + d.get('title','') + '\n\n')
-    f.write('## Description\n' + d.get('description','') + '\n\n')
-    f.write('## Plan\n' + d.get('plan','') + '\n\n')
-    f.write('## Implementation Notes\n' + d.get('implementation_notes','') + '\n\n')
-"
-REVIEW_INPUT=$(cat /tmp/kanban_impl_review.md)
-rm -f /tmp/kanban_impl_review.md
-REVIEW_RESULT=$(copilot -p "Review this code implementation:\n$REVIEW_INPUT\nEvaluate: 1) Code quality: readability, duplication, naming 2) Error handling: proper try-catch, error messages 3) Type safety: TypeScript types, minimize any usage 4) Security: SQL injection, XSS, input validation 5) Performance: unnecessary queries, memory usage. Respond ONLY with a JSON object: {\"status\": \"approved\" or \"changes_requested\", \"comment\": \"your review in markdown\"}" --model claude-opus-4.6 2>&1)
+Code Review Agent prompt:
 ```
+You are a Code Review Agent for Kanban task #<ID>.
 
-Record result and agent_log:
-```bash
+## Task Info
+- Title: <title>
+- Requirements: <description>
+- Plan: <plan>
+- Implementation Notes: <implementation_notes>
+
+## Your Job
+Review this code implementation. Evaluate:
+1. Code quality: readability, duplication, naming
+2. Error handling: proper try-catch, error messages
+3. Type safety: TypeScript types, minimize any usage
+4. Security: SQL injection, XSS, input validation
+5. Performance: unnecessary queries, memory usage
+
+## Record Results
 # 1. Record review result
-curl -s -X POST "http://localhost:5173/api/task/$ID/review?project=$PROJECT" \
+curl -s -X POST "http://localhost:5173/api/task/<ID>/review?project=<PROJECT>" \
   -H 'Content-Type: application/json' \
-  -d "{\"reviewer\": \"$REVIEWER\", \"status\": \"$REVIEW_STATUS\", \"comment\": \"$REVIEW_COMMENT\"}"
+  -d '{"reviewer": "sonnet", "status": "approved" or "changes_requested", "comment": "<REVIEW_MARKDOWN>"}'
 
-# 2. Append to agent_log (orchestrator must do this for review steps)
-CURRENT_LOG=$(curl -s "http://localhost:5173/api/task/$ID?project=$PROJECT" | python3 -c "import sys,json; print(json.load(sys.stdin).get('agent_log') or '[]')")
-NEW_LOG=$(python3 -c "
-import json, datetime
-log = json.loads('''$CURRENT_LOG''')
-log.append({'agent': 'code-review-agent', 'model': '$REVIEWER', 'message': 'Code review completed: $REVIEW_STATUS', 'timestamp': datetime.datetime.utcnow().isoformat() + 'Z'})
-print(json.dumps(log))
-")
-curl -s -X PATCH "http://localhost:5173/api/task/$ID?project=$PROJECT" \
-  -H 'Content-Type: application/json' \
-  -d "{\"agent_log\": $(echo "$NEW_LOG" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read().strip()))")}"
+# 2. Append to agent_log (read current log, add entry, PATCH)
 ```
 
 Default mode: Ask user with AskUserQuestion whether to accept/reject.
@@ -675,35 +600,6 @@ Also append to agent_log (read current log, add entry with agent="test-runner", 
 `/kanban step <ID>` — Execute only the next pipeline step for a task
 
 Same as `/kanban run` but exits after one step instead of looping.
-
-### Agents
-`/kanban agents` — Show available agents
-
-Detect and display:
-```bash
-echo "## Available Agents"
-echo ""
-echo "| Agent | Model | Available |"
-echo "|-------|-------|-----------|"
-
-if command -v gemini &>/dev/null; then
-  echo "| Review Agent | gemini | ✅ |"
-else
-  echo "| Review Agent | gemini | ❌ |"
-fi
-
-if command -v copilot &>/dev/null; then
-  echo "| Review Agent | copilot (claude-opus-4.6) | ✅ (fallback #1) |"
-else
-  echo "| Review Agent | copilot | ❌ |"
-fi
-
-echo "| Plan Agent | opus (Task) | ✅ |"
-echo "| Worker Agent | opus (Task) | ✅ |"
-echo "| TDD Tester | sonnet (Task) | ✅ |"
-echo "| Review Agent | sonnet (Task) | ✅ (fallback #2) |"
-echo "| Test Runner | sonnet (Task) | ✅ |"
-```
 
 ### Review
 `/kanban review <ID>`
@@ -748,11 +644,6 @@ echo "$BOARD" | jq '{
 ### Agent Failure
 - 1 retry on first failure
 - 2nd failure: keep current status, log error to `agent_log`, notify user
-
-### External CLI Failure
-- `which gemini` not found → try `copilot -p --model claude-opus-4.6` → fallback to `sonnet` (Task tool)
-- CLI execution error (including rate limit) → log to `agent_log`, try next fallback
-- gemini rate limit → copilot fallback → sonnet fallback
 
 ### Review Rejection Loop (Circuit Breaker)
 - `plan_review_count > 3`: stop loop, ask user for guidance
@@ -841,7 +732,7 @@ curl -s -X PATCH "http://localhost:5173/api/task/$ID?project=$PROJECT" \
 # Submit plan review — project param required
 curl -s -X POST "http://localhost:5173/api/task/$ID/plan-review?project=$PROJECT" \
   -H 'Content-Type: application/json' \
-  -d '{"reviewer": "gemini", "status": "approved", "comment": "Plan is thorough and complete."}'
+  -d '{"reviewer": "sonnet", "status": "approved", "comment": "Plan is thorough and complete."}'
 ```
 
 ### Step 4: Implementation
@@ -864,7 +755,7 @@ curl -s -X PATCH "http://localhost:5173/api/task/$ID?project=$PROJECT" \
 # Submit code review — project param required
 curl -s -X POST "http://localhost:5173/api/task/$ID/review?project=$PROJECT" \
   -H 'Content-Type: application/json' \
-  -d '{"reviewer": "gemini", "status": "approved", "comment": "Code quality is good."}'
+  -d '{"reviewer": "sonnet", "status": "approved", "comment": "Code quality is good."}'
 ```
 
 ### Step 6: Test
@@ -882,9 +773,9 @@ curl -s -X POST "http://localhost:5173/api/task/$ID/test-result?project=$PROJECT
 |-------|-------|---------|------------|
 | Requirements | `description` | What needs to be done | User |
 | Plan | `plan` | How to approach it | Plan Agent (opus) |
-| Plan Review | `plan_review_comments` | Plan verification | Review Agent (gemini-3-pro-preview / copilot-opus / sonnet) |
+| Plan Review | `plan_review_comments` | Plan verification | Review Agent (sonnet) |
 | Implementation | `implementation_notes` | What was changed + tests | Worker (opus) + TDD Tester (sonnet) |
-| Impl Review | `review_comments` | Code review results | Code Review Agent (gemini-3-pro-preview / copilot-opus / sonnet) |
+| Impl Review | `review_comments` | Code review results | Code Review Agent (sonnet) |
 | Test | `test_results` | Lint/build/test results | Test Runner (sonnet) |
 
 ## Web Board Viewer
