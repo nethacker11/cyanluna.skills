@@ -433,7 +433,7 @@ export function kanbanApiPlugin(): Plugin {
               try {
                 const atts = JSON.parse(task.attachments);
                 for (const a of atts) {
-                  try { fs.unlinkSync(a.path); } catch { /* ok */ }
+                  try { fs.unlinkSync(path.join(IMAGES_DIR, a.storedName)); } catch { /* ok */ }
                 }
               } catch { /* ok */ }
             }
@@ -895,7 +895,7 @@ export function kanbanApiPlugin(): Plugin {
           const idx = attachments.findIndex((a: any) => a.storedName === storedName);
           if (idx >= 0) {
             const removed = attachments.splice(idx, 1)[0];
-            try { fs.unlinkSync(removed.path); } catch { /* ok */ }
+            try { fs.unlinkSync(path.join(IMAGES_DIR, removed.storedName)); } catch { /* ok */ }
             db.prepare("UPDATE tasks SET attachments = ? WHERE id = ?")
               .run(JSON.stringify(attachments), id);
           }
