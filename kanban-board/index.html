@@ -29,6 +29,15 @@
         <button id="refresh-btn" title="Refresh">&#x21bb;</button>
       </div>
     </header>
+    <div class="toolbar">
+      <input type="search" id="search-input" placeholder="Search tasks…" autocomplete="off" />
+      <select id="sort-select">
+        <option value="default">Sort: Default</option>
+        <option value="created_desc">Created ↓ Newest</option>
+        <option value="created_asc">Created ↑ Oldest</option>
+        <option value="completed_desc">Completed ↓</option>
+      </select>
+    </div>
     <main id="board"></main>
     <main id="list-view" class="hidden"></main>
     <!-- Modal -->

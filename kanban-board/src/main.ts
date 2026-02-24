@@ -59,12 +59,54 @@ const STATUS_BADGES: Record<string, string> = {
 let currentProject: string | null = null;
 let isDragging = false;
 let currentView: "board" | "list" = "board";
+let currentSearch: string = '';
+let currentSort: string = 'default';
 
 function priorityClass(priority: string): string {
   if (priority === "high") return "high";
   if (priority === "medium") return "medium";
   if (priority === "low") return "low";
   return "";
+}
+
+function sortTasks(tasks: Task[]): Task[] {
+  if (currentSort === 'default') return tasks;
+  return [...tasks].sort((a, b) => {
+    if (currentSort === 'created_asc')  return a.created_at.localeCompare(b.created_at);
+    if (currentSort === 'created_desc') return b.created_at.localeCompare(a.created_at);
+    if (currentSort === 'completed_desc') {
+      return (b.completed_at || '').localeCompare(a.completed_at || '');
+    }
+    return 0;
+  });
+}
+
+function applySearchFilter() {
+  const q = currentSearch.toLowerCase();
+  if (currentView === 'board') {
+    document.querySelectorAll<HTMLElement>('.card').forEach(card => {
+      if (!q) { card.style.display = ''; return; }
+      const title = card.querySelector('.card-title')?.textContent?.toLowerCase() || '';
+      const desc  = card.querySelector('.card-desc')?.textContent?.toLowerCase() || '';
+      const tags  = [...card.querySelectorAll('.tag')].map(t => t.textContent?.toLowerCase() || '').join(' ');
+      card.style.display = (title.includes(q) || desc.includes(q) || tags.includes(q)) ? '' : 'none';
+    });
+    // Update column counts: "visible/total" when searching
+    document.querySelectorAll<HTMLElement>('.column').forEach(col => {
+      const cards   = col.querySelectorAll<HTMLElement>('.card');
+      const visible = [...cards].filter(c => c.style.display !== 'none').length;
+      const countEl = col.querySelector<HTMLElement>('.count');
+      if (countEl) countEl.textContent = q ? `${visible}/${cards.length}` : `${cards.length}`;
+    });
+  } else {
+    document.querySelectorAll<HTMLElement>('#list-view tbody tr').forEach(row => {
+      if (!q) { row.style.display = ''; return; }
+      const title   = row.querySelector('.col-title')?.textContent?.toLowerCase() || '';
+      const project = (row as HTMLTableRowElement).cells[5]?.textContent?.toLowerCase() || '';
+      const tags    = [...row.querySelectorAll('.tag')].map(t => t.textContent?.toLowerCase() || '').join(' ');
+      row.style.display = (title.includes(q) || project.includes(q) || tags.includes(q)) ? '' : 'none';
+    });
+  }
 }
 
 function parseTags(tags: string | null): string[] {
@@ -196,7 +238,7 @@ function renderColumn(
   icon: string,
   tasks: Task[]
 ): string {
-  const cardsHtml = tasks.map(renderCard).join("");
+  const cardsHtml = sortTasks(tasks).map(renderCard).join("");
   const addBtn = key === "todo"
     ? `<button class="add-card-btn" id="add-card-btn" title="Add card">+</button>`
     : "";
@@ -865,6 +907,7 @@ async function loadBoard() {
     });
 
     setupDragAndDrop();
+    applySearchFilter();
 
     const addBtn = document.getElementById("add-card-btn");
     if (addBtn) {
@@ -902,15 +945,17 @@ async function loadListView() {
       }
     }
 
-    // Sort by ID descending (newest first)
-    allTasks.sort((a, b) => b.id - a.id);
+    // Sort by selected mode (default: ID descending / newest first)
+    const displayTasks = currentSort === 'default'
+      ? [...allTasks].sort((a, b) => b.id - a.id)
+      : sortTasks(allTasks);
 
-    const total = allTasks.length;
-    const doneCount = allTasks.filter(t => t.status === "done").length;
+    const total = displayTasks.length;
+    const doneCount = displayTasks.filter(t => t.status === "done").length;
     document.getElementById("count-summary")!.textContent =
       `${doneCount}/${total} completed`;
 
-    const rows = allTasks.map(t => {
+    const rows = displayTasks.map(t => {
       const pClass = priorityClass(t.priority);
       const tags = parseTags(t.tags);
       const tagsHtml = tags.map(tag => `<span class="tag">${tag}</span>`).join("");
@@ -1004,6 +1049,8 @@ async function loadListView() {
         showTaskDetail(id, project);
       });
     });
+
+    applySearchFilter();
   } catch (err) {
     console.error("loadListView failed:", err);
     listView.innerHTML = `
@@ -1218,6 +1265,18 @@ setInterval(() => {
 
 // Refresh button
 document.getElementById("refresh-btn")!.addEventListener("click", refreshCurrentView);
+
+// Search — DOM filter, no API re-fetch
+document.getElementById("search-input")!.addEventListener("input", (e) => {
+  currentSearch = (e.target as HTMLInputElement).value.trim();
+  applySearchFilter();
+});
+
+// Sort — requires re-render
+document.getElementById("sort-select")!.addEventListener("change", (e) => {
+  currentSort = (e.target as HTMLSelectElement).value;
+  refreshCurrentView();
+});
 
 // Close modal
 document.getElementById("modal-close")!.addEventListener("click", () => {
