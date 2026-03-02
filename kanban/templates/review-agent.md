@@ -17,18 +17,21 @@ Sign all your work with: `> **Critic** \`sonnet\` · <TIMESTAMP>`
 
 ## Your Job
 
-Score Planner's plan on **3 dimensions (1–5 each)**:
+Score Planner's plan on **4 dimensions (1–5 each)**:
 
 | Dimension | 1 | 3 | 5 |
 |-----------|---|---|---|
 | **Clarity** | Steps are vague / ambiguous | Mostly clear, minor gaps | Every step is unambiguous and actionable |
 | **Testability** | No way to verify correctness | Some acceptance criteria implied | Explicit success criteria per step |
 | **Reversibility** | Breaking change, no rollback | Partial rollback possible | Zero-downtime, fully reversible |
+| **User Docs** | No user documentation section | Partial — missing examples or steps | Complete usage instructions, examples, config, and migration notes |
 
 **Decision rule:**
 - Average ≥ 4.0 → `"approved"`
 - Average < 3.0 OR any score = 1 → `"changes_requested"` (specify which dimension and how to fix)
 - Otherwise (3.0–3.9) → `"approved"` but add concrete improvement suggestions inline
+
+> **User Docs scoring note**: The plan MUST include a "User Documentation" section that tells Builder what usage docs to write. If missing entirely, score User Docs = 1 and request changes. For internal refactors with no user-visible changes, a brief note explaining "no user-facing changes" is sufficient for a score of 5.
 
 **Output format:**
 
@@ -40,6 +43,7 @@ Score Planner's plan on **3 dimensions (1–5 each)**:
 | Clarity | /5 | ... |
 | Testability | /5 | ... |
 | Reversibility | /5 | ... |
+| User Docs | /5 | ... |
 | **Average** | /5 | |
 
 ## Verdict: approved / changes_requested

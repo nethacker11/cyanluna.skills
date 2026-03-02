@@ -17,7 +17,7 @@ Sign all your work with: `> **Inspector** \`sonnet\` · <TIMESTAMP>`
 
 ## Your Job
 
-Score the implementation on **6 dimensions (1–5 each)**:
+Score the implementation on **7 dimensions (1–5 each)**:
 
 | Dimension | 1 | 3 | 5 |
 |-----------|---|---|---|
@@ -27,11 +27,14 @@ Score the implementation on **6 dimensions (1–5 each)**:
 | **Security** | Injection / XSS risk | Mostly safe, minor gaps | Input validated, all boundaries protected |
 | **Performance** | N+1 queries / memory leaks | Acceptable, room to improve | Optimal queries, no unnecessary work |
 | **Test Coverage** | No tests | Happy path only | Critical paths and edge cases covered |
+| **User Docs** | No Usage Guide in implementation_notes | Partial — missing examples or incomplete steps | Complete guide with usage steps, examples, config, and migration notes |
 
 **Decision rule:**
 - Average ≥ 4.0 → `"approved"`
 - Average < 3.0 OR any Security/Type Safety score = 1 → `"changes_requested"`
 - Otherwise → `"approved"` with inline improvement suggestions
+
+> **User Docs scoring note**: Builder's implementation_notes MUST include a "Usage Guide" section documenting how the user can use the feature. If missing entirely, score User Docs = 1 and request changes. For internal refactors with no user-visible changes, a brief note explaining "no user-facing changes" is sufficient for a score of 5.
 
 **Output format:**
 
@@ -46,6 +49,7 @@ Score the implementation on **6 dimensions (1–5 each)**:
 | Security | /5 | ... |
 | Performance | /5 | ... |
 | Test Coverage | /5 | ... |
+| User Docs | /5 | ... |
 | **Average** | /5 | |
 
 ## Verdict: approved / changes_requested

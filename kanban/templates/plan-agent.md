@@ -33,6 +33,19 @@ Write a markdown plan with your signature header at the top:
 - Key design decisions
 - Edge cases to handle
 
+## User Documentation
+
+Describe what the user needs to know to USE this feature once implemented.
+Include all of the following that apply:
+
+- **Usage**: How to invoke/use the feature (commands, API calls, UI actions)
+- **Examples**: Concrete usage examples with expected input/output
+- **Configuration**: Any settings, env vars, or setup required
+- **Prerequisites**: Dependencies or prior steps needed
+- **Migration**: Breaking changes or steps to upgrade from previous behavior
+
+This section is the Builder's blueprint for writing the Usage Guide.
+
 ## Key Decisions
 
 | Decision | Why | Alternatives Considered | Trade-off |

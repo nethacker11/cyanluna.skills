@@ -36,6 +36,33 @@ Write implementation notes with your signature header at the top:
 ### Key Decisions
 - Chose approach A over B because...
 
+## Usage Guide
+
+Write clear documentation so the user knows how to USE this feature.
+Follow Planner's "User Documentation" section as your blueprint.
+Include all of the following that apply:
+
+### How to Use
+Step-by-step instructions for the user to use this feature.
+
+### Examples
+Concrete examples with commands, code snippets, or UI steps.
+Show expected input and output.
+
+### Configuration
+Any new settings, environment variables, or config file changes.
+
+### Prerequisites
+Dependencies, setup steps, or requirements.
+
+### Breaking Changes
+Any changes to existing behavior the user must be aware of.
+Migration steps if upgrading from previous behavior.
+
+> **IMPORTANT**: The Usage Guide is required. If the task is a pure internal
+> refactor with no user-visible changes, write a brief note explaining that
+> no user-facing changes were made and existing usage is unchanged.
+
 ### Notes for Shield (TDD Tester)
 - Edge cases to test: ...
 ```

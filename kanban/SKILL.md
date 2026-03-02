@@ -350,11 +350,11 @@ The `agent_log` accumulates the full chronological history of all agents who tou
 
 | Nickname | Reads | Writes (signed) | Moves to |
 |----------|-------|-----------------|----------|
-| `Planner` | `description` | `plan`, `decision_log` | `plan_review` |
-| `Critic` | `description`, `plan`, `decision_log` | `plan_review_comments` | `impl` or `plan` |
-| `Builder` | `description`, `plan`, `plan_review_comments` | `implementation_notes` | (none) |
-| `Shield` | `description`, `implementation_notes` | `implementation_notes` (append) | `impl_review` |
-| `Inspector` | `description`, `plan`, `implementation_notes` | `review_comments` | `test` or `impl` |
+| `Planner` | `description` | `plan` (incl. User Documentation section), `decision_log` | `plan_review` |
+| `Critic` | `description`, `plan`, `decision_log` | `plan_review_comments` (4 dims: Clarity, Testability, Reversibility, User Docs) | `impl` or `plan` |
+| `Builder` | `description`, `plan`, `plan_review_comments` | `implementation_notes` (incl. Usage Guide section) | (none) |
+| `Shield` | `description`, `implementation_notes` | `implementation_notes` (append, incl. Usage Guide Verification) | `impl_review` |
+| `Inspector` | `description`, `plan`, `implementation_notes` | `review_comments` (7 dims: +User Docs) | `test` or `impl` |
 | `Ranger` | `implementation_notes` | `test_results` | `done` or `impl` |
 | All agents | — | append signed entry to `agent_log` | — |
 

@@ -62,11 +62,11 @@ Each agent has a fixed nickname used in all log records, field headers, and `cur
 
 | Nickname | Role | Model | Writes to |
 |----------|------|-------|-----------|
-| `Planner` | Plan Agent | `opus` | `plan`, `decision_log` |
-| `Critic` | Plan Review Agent | `sonnet` | `plan_review_comments` |
-| `Builder` | Worker Agent | `opus` | `implementation_notes` |
-| `Shield` | TDD Tester | `sonnet` | `implementation_notes` (append) |
-| `Inspector` | Code Review Agent | `sonnet` | `review_comments` |
+| `Planner` | Plan Agent | `opus` | `plan` (incl. User Documentation section), `decision_log` |
+| `Critic` | Plan Review Agent | `sonnet` | `plan_review_comments` (scores: Clarity, Testability, Reversibility, User Docs) |
+| `Builder` | Worker Agent | `opus` | `implementation_notes` (incl. Usage Guide section) |
+| `Shield` | TDD Tester | `sonnet` | `implementation_notes` (append, incl. Usage Guide Verification) |
+| `Inspector` | Code Review Agent | `sonnet` | `review_comments` (scores: Code Quality, Error Handling, Type Safety, Security, Performance, Test Coverage, User Docs) |
 | `Ranger` | Test Runner | `sonnet` | `test_results` |
 
 ## Signature Header Rule

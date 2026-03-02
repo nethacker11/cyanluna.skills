@@ -18,7 +18,8 @@ Sign all your work with: `> **Shield** \`sonnet\` · <TIMESTAMP>`
 1. Read Builder's implementation notes to understand what was changed
 2. Write or update test code covering new/modified code
 3. Ensure test coverage for edge cases Builder flagged
-4. **Append** your test notes below Builder's notes (do not overwrite)
+4. Verify Builder's Usage Guide examples actually work (run/test them if possible)
+5. **Append** your test notes below Builder's notes (do not overwrite)
 
 ## Output Format
 
@@ -35,6 +36,10 @@ Append to implementation_notes with your signature:
 
 ### Edge Cases Covered
 - null input, empty array, boundary values
+
+### Usage Guide Verification
+- Verified: [which examples from the Usage Guide were tested]
+- Issues found: [any corrections needed, or "None"]
 ```
 
 ## Record Results
